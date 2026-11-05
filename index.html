@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Background Generator</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #000;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            display: block;
+        }
+        .controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 20px;
+            border-radius: 10px;
+            border: 2px solid #0ff;
+            color: #0ff;
+            z-index: 100;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+        }
+        .controls h2 {
+            margin: 0 0 15px 0;
+            font-size: 18px;
+            text-shadow: 0 0 10px #0ff;
+        }
+        .control-group {
+            margin-bottom: 15px;
+        }
+        .control-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+        .control-group input[type="range"] {
+            width: 200px;
+        }
+        .control-group input[type="color"] {
+            width: 50px;
+            height: 30px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button {
+            background: #0ff;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-right: 10px;
+            margin-top: 5px;
+        }
+        button:hover {
+            background: #0aa;
+        }
+        .fps-counter {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            color: #0f0;
+            padding: 10px 15px;
+            border-radius: 5px;
+            font-family: monospace;
+            border: 1px solid #0f0;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <div class="fps-counter">FPS: <span id="fps">60</span></div>
+    
+    <div class="controls">
+        <h2>✨ Neon Generator ✨</h2>
+        <div class="control-group">
+            <label>Particle Count: <span id="particleCount">100</span></label>
+            <input type="range" id="numParticles" min="20" max="500" value="100">
+        </div>
+        <div class="control-group">
+            <label>Speed: <span id="speedValue">2</span></label>
+            <input type="range" id="speed" min="1" max="10" value="2">
+        </div>
+        <div class="control-group">
+            <label>Connection Distance: <span id="distValue">120</span></label>
+            <input type="range" id="distance" min="50" max="250" value="120">
+        </div>
+        <div class="control-group">
+            <label>Primary Color:</label>
+            <input type="color" id="color1" value="#00ffff">
+        </div>
+        <div class="control-group">
+            <label>Secondary Color:</label>
+            <input type="color" id="color2" value="#ff00ff">
+        </div>
+        <div class="control-group">
+            <label>
+                <input type="checkbox" id="showLines" checked> Show Lines
+            </label>
+        </div>
+        <button id="downloadBtn">💾 Download PNG</button>
+        <button id="resetBtn">🔄 Reset</button>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"></script>
+    <script>
+        let particles = [];
+        let numParticles = 100;
+        let maxSpeed = 2;
+        let connectionDistance = 120;
+        let color1, color2;
+        let showLines = true;
+        let grid = {};
+        let cellSize = 120;
+        
+        let lastFrameTime = 0;
+        let fps = 60;
+
+        function setup() {
+            createCanvas(windowWidth, windowHeight);
+            color1 = color('#00ffff');
+            color2 = color('#ff00ff');
+            
+            initParticles();
+            setupControls();
+        }
+
+        function initParticles() {
+            particles = [];
+            for (let i = 0; i < numParticles; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        function buildGrid() {
+            grid = {};
+            cellSize = connectionDistance;
+            for (let p of particles) {
+                let cellX = floor(p.pos.x / cellSize);
+                let cellY = floor(p.pos.y / cellSize);
+                let key = `${cellX},${cellY}`;
+                
+                if (!grid[key]) grid[key] = [];
+                grid[key].push(p);
+            }
+        }
+
+        function getNeighbors(p) {
+            let neighbors = [];
+            let cellX = floor(p.pos.x / cellSize);
+            let cellY = floor(p.pos.y / cellSize);
+            
+            for (let dx = -1; dx <= 1; dx++) {
+                for (let dy = -1; dy <= 1; dy++) {
+                    let key = `${cellX + dx},${cellY + dy}`;
+                    if (grid[key]) {
+                        neighbors.push(...grid[key]);
+                    }
+                }
+            }
+            return neighbors;
+        }
+
+        function draw() {
+            let now = millis();
+            fps = round(1000 / (now - lastFrameTime));
+            lastFrameTime = now;
+            select('#fps').html(fps);
+            
+            background(0, 25);
+            
+            if (showLines) buildGrid();
+            
+            for (let p of particles) {
+                p.update();
+                p.display();
+            }
+            
+            if (showLines) {
+                strokeWeight(1);
+                for (let p of particles) {
+                    let neighbors = getNeighbors(p);
+                    for (let other of neighbors) {
+                        if (p === other) continue;
+                        
+                        let d = dist(p.pos.x, p.pos.y, other.pos.x, other.pos.y);
+                        if (d < connectionDistance && d > 0) {
+                            let alpha = map(d, 0, connectionDistance, 200, 0);
+                            stroke(0, 255, 255, alpha);
+                            line(p.pos.x, p.pos.y, other.pos.x, other.pos.y);
+                        }
+                    }
+                }
+            }
+        }
+
+        class Particle {
+            constructor() {
+                this.pos = createVector(random(width), random(height));
+                this.vel = p5.Vector.random2D();
+                this.vel.mult(random(0.5, maxSpeed));
+                this.size = random(3, 8);
+                this.useColor1 = random() > 0.5;
+            }
+            
+            update() {
+                this.pos.add(this.vel);
+                
+                if (this.pos.x < 0 || this.pos.x > width) this.vel.x *= -1;
+                if (this.pos.y < 0 || this.pos.y > height) this.vel.y *= -1;
+                
+                let mouse = createVector(mouseX, mouseY);
+                let force = p5.Vector.sub(mouse, this.pos);
+                force.setMag(0.1);
+                this.vel.add(force);
+                this.vel.limit(maxSpeed);
+            }
+            
+            display() {
+                noStroke();
+                let c = this.useColor1 ? color1 : color2;
+                
+                fill(red(c), green(c), blue(c), 60);
+                ellipse(this.pos.x, this.pos.y, this.size * 4);
+                
+                fill(255);
+                ellipse(this.pos.x, this.pos.y, this.size);
+            }
+        }
+
+        function setupControls() {
+            select('#numParticles').input(function() {
+                numParticles = int(this.value());
+                select('#particleCount').html(this.value());
+                initParticles();
+            });
+
+            select('#speed').input(function() {
+                maxSpeed = int(this.value());
+                select('#speedValue').html(this.value());
+            });
+
+            select('#distance').input(function() {
+                connectionDistance = int(this.value());
+                select('#distValue').html(this.value());
+            });
+
+            select('#color1').input(function() {
+                color1 = color(this.value());
+            });
+
+            select('#color2').input(function() {
+                color2 = color(this.value());
+            });
+
+            select('#showLines').changed(function() {
+                showLines = this.checked();
+            });
+
+            select('#downloadBtn').mousePressed(function() {
+                select('.controls').hide();
+                select('.fps-counter').hide();
+                setTimeout(() => {
+                    saveCanvas('neon-background-' + Date.now(), 'png');
+                    select('.controls').show();
+                    select('.fps-counter').show();
+                }, 100);
+            });
+
+            select('#resetBtn').mousePressed(function() {
+                initParticles();
+            });
+        }
+
+        function windowResized() {
+            resizeCanvas(windowWidth, windowHeight);
+        }
+    </script>
+</body>
+</html>
